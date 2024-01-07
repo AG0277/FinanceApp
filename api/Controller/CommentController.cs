@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using api.Dtos;
 using api.Dtos.Comment;
 using api.Interfaces;
 using api.Mappers;
@@ -14,26 +15,72 @@ namespace api.Controller
     [ApiController]
     public class CommentController : ControllerBase
     {
-        private readonly ICommentRepository iCommentRepository;
-        public CommentController(ICommentRepository ICommentRepository)
+        private readonly ICommentRepository commentRepository;
+        private readonly IStockRepository stockRepository;
+        public CommentController(ICommentRepository ICommentRepository, IStockRepository IStockRepository)
         {
-            iCommentRepository = ICommentRepository;
+            commentRepository = ICommentRepository;
+            stockRepository = IStockRepository;
         }
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            List<Comment> comments = await iCommentRepository.GetAllAsync();
+            if (!ModelState.IsValid)
+                return BadRequest();
+            List<Comment> comments = await commentRepository.GetAllAsync();
             var commentDto = comments.Select(s => s.ToCommentDto());
             return Ok(commentDto);
         }
-        [HttpGet]
-        [Route("{id}")]
+        [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById([FromRoute] int id)
         {
-            Comment? comment = await iCommentRepository.GetByIdAsync(id);
+            if (!ModelState.IsValid)
+                return BadRequest();
+            Comment? comment = await commentRepository.GetByIdAsync(id);
             if (comment == null)
             {
                 return NotFound();
+            }
+            return Ok(comment.ToCommentDto());
+        }
+
+        [HttpPost("{stockId:int}")]
+        public async Task<IActionResult> Create([FromRoute] int stockId, [FromBody] CreateCommentDto commentDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest();
+            var exists = await stockRepository.StockExists(stockId);
+            if (!exists)
+            {
+                return BadRequest("Stock does not exist");
+            }
+            var commentModel = commentDto.ToCommentFromCreateDto(stockId);
+            await commentRepository.CreateAsync(commentModel);
+            return CreatedAtAction(nameof(GetById), new { id = commentModel.Id }, commentModel.ToCommentDto());
+        }
+        [HttpPut]
+        [Route("{id:int}")]
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateCommentDto updateDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest();
+            var comment = await commentRepository.UpdateAsync(id, updateDto.ToCommentFromUpdate());
+            if (comment == null)
+            {
+                return NotFound("Comment does not exist");
+            }
+            return Ok(comment);
+        }
+        [HttpDelete]
+        [Route("{id:int}")]
+        public async Task<IActionResult> Delete([FromRoute] int id)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest();
+            var comment = await commentRepository.DeleteAsync(id);
+            if (comment == null)
+            {
+                return NotFound("Comment does not exist");
             }
             return Ok(comment.ToCommentDto());
         }
